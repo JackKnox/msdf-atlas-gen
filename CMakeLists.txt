@@ -1,11 +1,20 @@
 
 cmake_minimum_required(VERSION 3.15)
 include(cmake/version.cmake)
+include(FetchContent)
 
-option(MSDF_ATLAS_BUILD_STANDALONE "Build the msdf-atlas-gen standalone executable" ON)
-option(MSDF_ATLAS_USE_VCPKG "Use vcpkg package manager to link project dependencies" ON)
-option(MSDF_ATLAS_USE_SKIA "Build with the Skia library" ON)
-option(MSDF_ATLAS_NO_ARTERY_FONT "Disable Artery Font export and do not require its submodule" OFF)
+FetchContent_Declare(
+    freetype
+    GIT_REPOSITORY https://gitlab.freedesktop.org/freetype/freetype
+    GIT_TAG        VER-2-13-3
+)
+FetchContent_MakeAvailable(freetype)
+FetchContent_GetProperties(freetype)
+
+set(FREETYPE_INCLUDE_DIRS "${freetype_SOURCE_DIR}/include")
+set(FREETYPE_LIBRARY freetype)
+
+option(MSDF_ATLAS_NO_ARTERY_FONT "Disable Artery Font export and do not require its submodule" ON)
 option(MSDF_ATLAS_MSDFGEN_EXTERNAL "Do not build the msdfgen submodule but find it as an external package" OFF)
 option(MSDF_ATLAS_INSTALL "Generate installation target" OFF)
 option(MSDF_ATLAS_DYNAMIC_RUNTIME "Link dynamic runtime library instead of static" OFF)
@@ -18,7 +27,7 @@ if(NOT MSDF_ATLAS_MSDFGEN_EXTERNAL)
     set(MSDFGEN_USE_VCPKG ${MSDF_ATLAS_USE_VCPKG} CACHE INTERNAL "Use vcpkg package manager to link msdfgen project dependencies" FORCE)
     set(MSDFGEN_USE_OPENMP OFF CACHE INTERNAL "Build with OpenMP support for multithreaded code (disabled for msdf-atlas-gen)" FORCE)
     set(MSDFGEN_USE_CPP11 ON CACHE INTERNAL "Build with C++11 enabled (always enabled for msdf-atlas-gen)" FORCE)
-    set(MSDFGEN_USE_SKIA ${MSDF_ATLAS_USE_SKIA} CACHE INTERNAL "Build msdfgen with the Skia library" FORCE)
+    set(MSDFGEN_USE_SKIA OFF CACHE INTERNAL "Build msdfgen with the Skia library" FORCE)
     set(MSDFGEN_INSTALL ${MSDF_ATLAS_INSTALL} CACHE INTERNAL "Generate installation target for msdfgen" FORCE)
     set(MSDFGEN_DYNAMIC_RUNTIME ${MSDF_ATLAS_DYNAMIC_RUNTIME} CACHE INTERNAL "Link dynamic runtime library instead of static for msdfgen" FORCE)
 endif()
@@ -37,39 +46,6 @@ endif()
 
 if(BUILD_SHARED_LIBS)
     set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
-endif()
-
-if(MSDF_ATLAS_USE_VCPKG)
-    # Make sure that vcpkg toolchain file is set
-    if(NOT CMAKE_TOOLCHAIN_FILE)
-        if(DEFINED ENV{VCPKG_ROOT})
-            set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
-        else()
-            message(SEND_ERROR "Vcpkg toolchain not configured. Either set VCPKG_ROOT environment variable or pass -DCMAKE_TOOLCHAIN_FILE=VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake to cmake")
-        endif()
-    endif()
-    # Default to statically linked vcpkg triplet on Windows
-    if(WIN32 AND NOT VCPKG_TARGET_TRIPLET AND NOT MSDF_ATLAS_DYNAMIC_RUNTIME)
-        if(CMAKE_GENERATOR_PLATFORM MATCHES "64$" AND NOT CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64")
-            set(VCPKG_TARGET_TRIPLET "x64-windows-static")
-        elseif(CMAKE_GENERATOR_PLATFORM MATCHES "32$" OR CMAKE_GENERATOR_PLATFORM STREQUAL "x86")
-            set(VCPKG_TARGET_TRIPLET "x86-windows-static")
-        else()
-            if(CMAKE_GENERATOR_PLATFORM)
-                message(WARNING "Vcpkg triplet not explicitly specified and could not be deduced. Recommend using -DVCPKG_TARGET_TRIPLET=x64-windows-static or similar")
-            else()
-                message(WARNING "Vcpkg triplet not explicitly specified and could not be deduced. Recommend using -A to explicitly select platform (Win32 or x64)")
-            endif()
-        endif()
-    endif()
-    # Select project features
-    if(NOT MSDF_ATLAS_VCPKG_FEATURES_SET)
-        set(VCPKG_MANIFEST_NO_DEFAULT_FEATURES ON)
-        if(MSDF_ATLAS_USE_SKIA)
-            list(APPEND VCPKG_MANIFEST_FEATURES "geometry-preprocessing")
-        endif()
-    endif()
-    set(MSDFGEN_VCPKG_FEATURES_SET ON)
 endif()
 
 # Version is specified in vcpkg.json
@@ -125,27 +101,6 @@ if(BUILD_SHARED_LIBS AND WIN32)
     target_compile_definitions(msdf-atlas-gen INTERFACE "MSDF_ATLAS_PUBLIC=__declspec(dllimport)")
 else()
     target_compile_definitions(msdf-atlas-gen PUBLIC MSDF_ATLAS_PUBLIC=)
-endif()
-
-# msdf-atlas-gen standalone executable
-if(MSDF_ATLAS_BUILD_STANDALONE)
-    set(MSDF_ATLAS_STANDALONE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/msdf-atlas-gen/main.cpp")
-    if(MSVC)
-        set(MSDF_ATLAS_STANDALONE_SOURCES ${MSDF_ATLAS_STANDALONE_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/msdf-atlas-gen.rc")
-    endif()
-    add_executable(msdf-atlas-gen-standalone ${MSDF_ATLAS_STANDALONE_SOURCES})
-    target_compile_definitions(msdf-atlas-gen-standalone PUBLIC MSDF_ATLAS_STANDALONE)
-    target_compile_definitions(msdf-atlas-gen-standalone PRIVATE MSDF_ATLAS_VERSION_UNDERLINE=${MSDF_ATLAS_VERSION_UNDERLINE})
-    set_property(TARGET msdf-atlas-gen-standalone PROPERTY MSVC_RUNTIME_LIBRARY "${MSDF_ATLAS_MSVC_RUNTIME}")
-    set_target_properties(msdf-atlas-gen-standalone PROPERTIES
-        OUTPUT_NAME msdf-atlas-gen
-        ARCHIVE_OUTPUT_NAME msdf-atlas-gen-standalone
-        # Avoid deleting msdf-atlas-gen.lib during clean
-        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-    )
-    target_link_libraries(msdf-atlas-gen-standalone PRIVATE msdf-atlas-gen::msdf-atlas-gen)
-    set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT msdf-atlas-gen-standalone)
 endif()
 
 # Installation

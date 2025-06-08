@@ -32,7 +32,6 @@ list(APPEND CMAKE_MODULE_PATH "${MSDFGEN_SOURCE_DIR}/cmake")
 #----------------------------------------------------------------
 # Gathering File
 #----------------------------------------------------------------
-message(STATUS ${MSDFGEN_SOURCE_DIR})
 file(GLOB_RECURSE SOURCES "${MSDFGEN_SOURCE_DIR}/core/*.cpp")
 file(GLOB_RECURSE ext_SOURCES "${MSDFGEN_SOURCE_DIR}/ext/*.cpp" "${MSDFGEN_SOURCE_DIR}/lib/*.cpp")
 
